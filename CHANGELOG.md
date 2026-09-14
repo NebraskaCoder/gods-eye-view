@@ -1,5 +1,17 @@
 # Changelog
 
+## Nebraska 511 CCTV source pack
+
+- Add NDOT highway cameras statewide (343 cameras, I-80 corridor and state routes) as the
+  eleventh keyless CCTV pack, behind `CCTV_NE511_ENABLED` / `CCTV_NE511_MAX_SOURCES`.
+- Prioritize against seven anchors spaced along the I-80 corridor rather than metro cores, so
+  a lowered `CCTV_MAX_SOURCES` thins to statewide coverage instead of collapsing onto Omaha.
+- Pin frames to the NDOT image origin and strip the per-frame cache-buster; refuse redirects on
+  the catalog POST.
+- Replace id-hash camera bearings with road-aligned headings precomputed from OSM way
+  geometry (`scripts/precompute-ne511-headings.mjs`), joined at catalog load and expired by
+  position so a moved camera falls back to its prior.
+
 - Split application scene, controls, catalog, tools and HTML into reusable components; configure application request services and sources without changing global fetch. Preserve standalone markup and voice behavior. Explicit annotation navigation may resolve a distant named target.
 
 ## Voice component boundaries
