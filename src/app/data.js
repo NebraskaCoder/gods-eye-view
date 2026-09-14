@@ -7,6 +7,7 @@ import satellitesLayer from '../data/satellites.js';
 import rocketLaunchesLayer from '../data/rocketLaunches.js';
 import trafficLayer from '../data/traffic.js';
 import cctvLayer from '../data/cctv.js';
+import messageSignsLayer from '../data/messageSigns.js';
 import radioLayer from '../data/radio.js';
 import bikeshareLayer from '../data/bikeshare.js';
 import aisLiveVesselsLayer from '../data/aisLiveVessels.js';
@@ -44,6 +45,7 @@ export function createApplicationData({
   rocketLaunchesLayer.attachDataManager(dataManager);
   dataManager.register(trafficLayer);
   dataManager.register(cctvLayer);
+  dataManager.register(messageSignsLayer);
   dataManager.register(radioLayer);
   dataManager.register(bikeshareLayer);
   dataManager.register(aisLiveVesselsLayer);

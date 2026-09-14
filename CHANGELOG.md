@@ -1,5 +1,15 @@
 # Changelog
 
+## Message sign layer
+
+- Add an agency-agnostic `message-signs` layer rendering live electronic message signs as
+  readable amber-on-black board faces, oriented to the traffic each sign addresses, with
+  Nebraska 511 (NDOT) as the first pack.
+- Serve the sign list at `/api/signs`: the upstream allows cross-origin POSTs but its CORS
+  preflight is answered by the SPA host as HTML, so the browser cannot call it directly.
+- Stand each board on the resolved ground floor, occlude the double-sided plane from behind
+  with an opaque housing panel, and use a board glyph as the marker and click target.
+
 ## Nebraska 511 CCTV source pack
 
 - Add NDOT highway cameras statewide (343 cameras, I-80 corridor and state routes) as the
