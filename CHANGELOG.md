@@ -1,28 +1,11 @@
 # Changelog
 
+- Add an agency-agnostic `message-signs` layer rendering live electronic message signs as readable board faces oriented to the traffic each sign addresses, with Nebraska 511 (NDOT) as the first pack. Serve the list and the sign-face images from the app origin, since the upstream CORS preflight is answered by its SPA host as HTML.
+
+- Add the Nebraska 511 (NDOT) camera pack: statewide highway cameras behind `CCTV_NE511_ENABLED` / `CCTV_NE511_MAX_SOURCES`, prioritized along the I-80 corridor so a lowered cap thins to statewide coverage, with frames pinned to the NDOT image origin and road-aligned headings precomputed from OSM way geometry.
+
 - Add an optional Nominatim geocoding adapter with configurable search/reverse endpoints, cancellation, bounded responses and retryable upstream errors. Extract portable response-reading and Overpass lexical helpers while retaining existing server exports.
 
-## Message sign layer
-
-- Add an agency-agnostic `message-signs` layer rendering live electronic message signs as
-  readable amber-on-black board faces, oriented to the traffic each sign addresses, with
-  Nebraska 511 (NDOT) as the first pack.
-- Serve the sign list at `/api/signs`: the upstream allows cross-origin POSTs but its CORS
-  preflight is answered by the SPA host as HTML, so the browser cannot call it directly.
-- Stand each board on the resolved ground floor, occlude the double-sided plane from behind
-  with an opaque housing panel, and use a board glyph as the marker and click target.
-
-## Nebraska 511 CCTV source pack
-
-- Add NDOT highway cameras statewide (343 cameras, I-80 corridor and state routes) as the
-  eleventh keyless CCTV pack, behind `CCTV_NE511_ENABLED` / `CCTV_NE511_MAX_SOURCES`.
-- Prioritize against seven anchors spaced along the I-80 corridor rather than metro cores, so
-  a lowered `CCTV_MAX_SOURCES` thins to statewide coverage instead of collapsing onto Omaha.
-- Pin frames to the NDOT image origin and strip the per-frame cache-buster; refuse redirects on
-  the catalog POST.
-- Replace id-hash camera bearings with road-aligned headings precomputed from OSM way
-  geometry (`scripts/precompute-ne511-headings.mjs`), joined at catalog load and expired by
-  position so a moved camera falls back to its prior.
 - Expose reference feed factories independently of standalone catalog construction; preserve source choices and asset attribution.
 
 - Add source-only layer exports and enforce source, browser, standalone and voice import directions. Move plain record/feed helpers and settings filesystem hardening to their owners while preserving compatibility and behavior.

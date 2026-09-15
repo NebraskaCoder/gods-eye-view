@@ -2866,7 +2866,7 @@ silently demoting every later lookup for the session.
 
 ## Message signs
 
-The `message-signs` layer (share token `n`) renders electronic message signs as
+The `message-signs` layer (share token `j`) renders electronic message signs as
 readable board faces rather than markers. Like the CCTV layer it is
 agency-agnostic: one layer, N packs under `server/providers/messageSigns.js`,
 each with its own env kill switch. Nebraska 511 (NDOT, `SIGNS_NE511_ENABLED`)
