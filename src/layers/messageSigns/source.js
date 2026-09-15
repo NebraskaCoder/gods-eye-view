@@ -28,14 +28,14 @@ export function createMessageSignsSource({
       }
       throw new Error(
         response.status === 504
-          ? 'Nebraska 511 timed out'
-          : 'Nebraska 511 temporarily unavailable',
+          ? 'Message signs timed out'
+          : 'Message signs temporarily unavailable',
       );
     }
     const payload = await response.json();
     signal?.throwIfAborted();
     if (!Array.isArray(payload?.signs)) {
-      throw new Error('Nebraska 511 returned an incomplete sign response');
+      throw new Error('Message signs returned an incomplete response');
     }
     return {
       records: [
@@ -51,11 +51,12 @@ export function createMessageSignsSource({
   return {
     fetch: fetchSigns,
     label: 'Message signs',
+    // No agency link here: the layer carries many packs, and each record
+    // brings its own provider and licence for per-sign attribution.
     attribution: {
       name: 'Message signs',
       description: 'Agency traveler-information message signs (public)',
       text: 'Message signs',
-      href: 'https://www.511.nebraska.gov/',
     },
   };
 }

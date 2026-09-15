@@ -197,7 +197,7 @@ test('the source reads the app-origin route and dedupes', async () => {
   const { records } = await source.fetch();
   assert.deepEqual(seen, [SIGNS_URL]);
   assert.equal(records.length, 1, 'duplicate ids must collapse');
-  assert.equal(source.attribution.href, 'https://www.511.nebraska.gov/');
+  assert.equal(source.attribution.name, 'Message signs');
 });
 
 test('the source throws on a refusal or a malformed body', async () => {
@@ -221,4 +221,44 @@ test('board geometry constants stay coherent', () => {
   const layout = layoutBoard(['X']);
   assert.ok(layout.width > layout.height);
   assert.ok(BOARD_WIDTH_M > 0);
+});
+
+test('the layer names no agency: attribution rides on each record', async () => {
+  // A second pack must be attributable without touching the layer, so nothing
+  // here may hard-code one agency's name, error text or link.
+  const generic = createMessageSignsSource();
+  assert.equal(generic.attribution.href, undefined);
+  for (const value of Object.values(generic.attribution))
+    assert.doesNotMatch(String(value), /nebraska|ndot|511/i);
+  assert.doesNotMatch(generic.label, /nebraska|ndot|511/i);
+
+  // Upstream failures report the layer, not a particular agency.
+  const rejects = async (status, re) => {
+    const s = createMessageSignsSource({
+      fetchImpl: async () => new Response('x', { status }),
+    });
+    await assert.rejects(s.fetch(), re);
+  };
+  await rejects(504, /^Error: Message signs timed out$/);
+  await rejects(503, /^Error: Message signs temporarily unavailable$/);
+  await assert.rejects(
+    createMessageSignsSource({
+      fetchImpl: async () => Response.json({ nope: true }),
+    }).fetch(),
+    /Message signs returned an incomplete response/,
+  );
+});
+
+test('a record keeps the provider and licence its agency published', () => {
+  const out = normalizeSignRecord({
+    ...record(),
+    provider: 'Nebraska 511',
+    license: 'Nebraska 511 - Nebraska Department of Transportation',
+  });
+  assert.equal(out.provider, 'Nebraska 511');
+  assert.match(out.license, /Department of Transportation/);
+  // Absent fields degrade to empty strings rather than undefined.
+  const bare = normalizeSignRecord(record());
+  assert.equal(bare.provider, '');
+  assert.equal(bare.license, '');
 });

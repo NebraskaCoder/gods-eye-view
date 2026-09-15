@@ -43,6 +43,10 @@ export function normalizeSignRecord(raw) {
     lon,
     headingDeg: Number.isFinite(heading) ? ((heading % 360) + 360) % 360 : null,
     displayType: String(raw?.displayType || ''),
+    // Carried through so a mixed-agency layer attributes each sign to the
+    // agency that published it, rather than to the layer as a whole.
+    provider: String(raw?.provider || ''),
+    license: String(raw?.license || ''),
     pages,
   };
 }

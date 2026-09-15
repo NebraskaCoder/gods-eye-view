@@ -96,7 +96,7 @@ export function createMessageSignsLayer({ source, services } = {}) {
     id: LAYER_ID,
     name: LAYER_NAME,
     icon: '🪧',
-    source: source.label || 'Nebraska 511',
+    source: source.label || LAYER_NAME,
     updateInterval: REFRESH_MS,
     statsRefreshInterval: 1000,
 

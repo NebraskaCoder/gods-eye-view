@@ -255,7 +255,7 @@ export function createSignPresentation({ state, services, source }) {
         details: [
           signSummary(record),
           ...signMessageLines(record),
-          `Source: ${source.attribution?.name || 'Nebraska 511'}`,
+          `Source: ${record.provider || source.attribution?.name || LAYER_NAME}`,
         ].filter(Boolean),
         accent: BOARD_TEXT,
       };
@@ -264,7 +264,11 @@ export function createSignPresentation({ state, services, source }) {
         layerId: LAYER_ID,
         dataSource: state.dataSource,
         layerName: LAYER_NAME,
-        source: source.attribution?.description || source.label || LAYER_NAME,
+        source:
+          record.provider ||
+          source.attribution?.description ||
+          source.label ||
+          LAYER_NAME,
         label: 'Message sign',
         latitude: record.lat,
         longitude: record.lon,
@@ -274,6 +278,8 @@ export function createSignPresentation({ state, services, source }) {
           travelDirectionDeg: record.headingDeg,
           faceBearingDeg: faceBearing,
           displayType: record.displayType,
+          provider: record.provider,
+          license: record.license,
           pages: record.pages.length,
           message: signMessageLines(record).join(' / '),
         },
