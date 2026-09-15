@@ -1,12 +1,7 @@
-import { createSourceSlot } from '../app/sourceSlot.js';
-import {
-  createMessageSignsLayer,
-  createMessageSignsSource,
-} from '../layers/messageSigns/index.js';
-import * as render from '../renderGovernor.js';
-import * as context from './contextStore.js';
-import * as picking from './pickRegistry.js';
-import * as groundFloor from './groundFloor.js';
+import { defaultSurface } from './surfaceServices.js';
+import { createApplicationMessageSigns } from '../app/layers/messageSigns.js';
+import { createSourceSlot } from '../sources/sourceSlot.js';
+import { createMessageSignsSource } from '../layers/messageSigns/index.js';
 export * from '../layers/messageSigns/index.js';
 const slot = createSourceSlot(
   createMessageSignsSource(),
@@ -14,7 +9,7 @@ const slot = createSourceSlot(
   'Message sign source',
 );
 export const configureMessageSignsSource = slot.configure;
-export default createMessageSignsLayer({
+export default createApplicationMessageSigns({
+  surface: defaultSurface,
   source: slot.source,
-  services: { render, context, picking, groundFloor },
 });

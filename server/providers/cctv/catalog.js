@@ -16,6 +16,7 @@ import {
   loadTarkteeSourcesFromDatex,
   loadWarendorfSourcesFromCatalog,
   loadNswSourcesFromOpenData,
+  loadCalgarySourcesFromOpenData,
   loadNe511SourcesFromGraphQL,
 } from './sources.js';
 
@@ -80,6 +81,11 @@ const LIVE_PACKS = [
     name: 'nsw',
     enabled: () => envEnabled('CCTV_NSW_ENABLED'),
     load: loadNswSourcesFromOpenData,
+  },
+  {
+    name: 'calgary',
+    enabled: () => envEnabled('CCTV_CALGARY_ENABLED'),
+    load: loadCalgarySourcesFromOpenData,
   },
   {
     name: 'ne511',

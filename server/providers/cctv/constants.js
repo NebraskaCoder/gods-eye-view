@@ -220,6 +220,22 @@ export const NSW_IMAGE_USER_AGENT =
  * out around 120 characters.
  */
 export const NSW_MAX_VIEW_LABEL = 140;
+/** Open Calgary traffic cameras: one keyless Socrata endpoint for the whole
+ * city; frames are stills on a City of Calgary host. */
+export const DEFAULT_CALGARY_ROWS_URL =
+  'https://data.calgary.ca/resource/k7p9-kppz.json?$limit=500';
+/** The only origin Calgary camera frames may come from. The catalog publishes
+ * most rows as `http://`; that host serves HTTPS and 301-redirects to it, so
+ * URLs are upgraded and then pinned here before registration. */
+export const CALGARY_IMAGE_ORIGIN = 'https://trafficcam.calgary.ca/';
+export const DEFAULT_CALGARY_MAX_SOURCES = 220;
+/** Centre Street / 7 Avenue: the prioritization anchor. */
+export const CALGARY_DOWNTOWN = { lat: 51.0461, lon: -114.0626 };
+/** Hard ceiling on the Calgary catalog body. The whole city is ~215 rows and
+ * under 100 KB; this only exists so an upstream that streams an unbounded
+ * body cannot be buffered without limit. */
+export const CALGARY_MAX_CATALOG_BYTES = 4 * 1024 * 1024;
+
 /**
  * Nebraska 511 (NDOT): keyless CARS-X / OneWeb GraphQL endpoint. One POST
  * returns the statewide camera list; frames are stills on a separate host, to
