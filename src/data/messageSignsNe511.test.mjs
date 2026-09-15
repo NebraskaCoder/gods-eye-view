@@ -10,6 +10,14 @@ import {
   NE511_SIGN_IMAGE_ORIGIN,
 } from '../../server/providers/messageSigns/ne511.js';
 import { NE511_GRAPHQL_URL } from '../../server/providers/cctv/constants.js';
+import {
+  serializeSigns,
+  signImagePath,
+  loadAllSigns,
+} from '../../server/providers/messageSigns.js';
+
+/** Minimal normalized sign, for pack-merge assertions. */
+const sign1 = (id) => ({ id, views: [{ textLines: ['X'], imageUrl: '' }] });
 
 const IMAGE = `${NE511_SIGN_IMAGE_ORIGIN}NE/prod/12_2026-07-21T193626.43821Z.png`;
 
@@ -163,4 +171,61 @@ test('the fetch fails soft on transport, GraphQL and query errors', async (t) =>
   for (const fetchImpl of cases) {
     assert.deepEqual(await loadNe511Signs({ fetchImpl }), []);
   }
+});
+
+test('vendor image URLs never reach the client', () => {
+  const signs = [
+    {
+      id: 'ne511-sign-a*1',
+      views: [
+        { textLines: ['ROADWORK'], imageUrl: '' },
+        { textLines: [], imageUrl: IMAGE },
+      ],
+    },
+  ];
+  const out = serializeSigns(signs);
+  // A text page keeps no image; an image page becomes an app-origin path.
+  assert.equal(out[0].views[0].imageUrl, '');
+  assert.equal(out[0].views[1].imageUrl, signImagePath('ne511-sign-a*1', 1));
+  assert.ok(out[0].views[1].imageUrl.startsWith('/api/signs/image'));
+  assert.doesNotMatch(JSON.stringify(out), /amazonaws/);
+  // The id carries an asterisk and must round-trip: the route looks the sign
+  // up by exact id, so a value that does not decode back is a 404.
+  const parsed = new URL(out[0].views[1].imageUrl, 'http://localhost');
+  assert.equal(parsed.searchParams.get('sign'), 'ne511-sign-a*1');
+  assert.equal(parsed.searchParams.get('page'), '1');
+});
+
+test('every enabled pack is merged and a failing pack costs only its own signs', async (t) => {
+  t.mock.method(console, 'warn', () => {});
+  const ok = {
+    name: 'ok',
+    enabled: () => true,
+    load: async () => [sign1('a')],
+  };
+  const boom = {
+    name: 'boom',
+    enabled: () => true,
+    load: async () => {
+      throw new Error('upstream down');
+    },
+  };
+  const off = {
+    name: 'off',
+    enabled: () => false,
+    load: async () => [sign1('c')],
+  };
+  const merged = await loadAllSigns({ packs: [ok, boom, off] });
+  assert.deepEqual(
+    merged.map((s) => s.id),
+    ['a'],
+  );
+
+  // Duplicate ids across packs collapse.
+  const dup = {
+    name: 'dup',
+    enabled: () => true,
+    load: async () => [sign1('a')],
+  };
+  assert.equal((await loadAllSigns({ packs: [ok, dup] })).length, 1);
 });

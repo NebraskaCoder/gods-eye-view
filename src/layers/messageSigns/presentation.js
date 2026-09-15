@@ -362,7 +362,7 @@ export function createSignPresentation({ state, services, source }) {
     );
     // Stand in front of the face, along the direction it points.
     const standAt = offsetLatLon(record.lat, record.lon, face, FOCUS_RANGE_M);
-    viewer.camera.flyTo({
+    const view = {
       destination: Cesium.Cartesian3.fromDegrees(
         standAt.lon,
         standAt.lat,
@@ -374,7 +374,17 @@ export function createSignPresentation({ state, services, source }) {
         pitch: 0,
         roll: 0,
       },
+    };
+    viewer.camera.flyTo({
+      ...view,
       duration: 1.2,
+      // Any camera input cancels a flight in progress. Without this the
+      // viewer is stranded wherever the arc had reached — often behind the
+      // board, which is the one place a sign cannot be read from.
+      cancel: () => {
+        viewer.camera.setView(view);
+        governorRequestRender?.('signs-focus');
+      },
     });
     governorRequestRender?.('signs-focus');
     return true;
