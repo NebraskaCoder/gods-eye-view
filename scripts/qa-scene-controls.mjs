@@ -85,6 +85,9 @@ try {
   );
   promptValue = '<b>QA shot</b>';
   await page.click('.scene-shot-label', { count: 2 });
+  await page.waitForSelector('.scene-shot-rename', { visible: true });
+  await page.type('.scene-shot-rename', promptValue);
+  await page.keyboard.press('Enter');
   await page.waitForFunction(
     () =>
       document.querySelector('.scene-shot-label')?.textContent ===
@@ -269,6 +272,40 @@ try {
         window.__godsEyeView.sceneDirector._project.scenes.length === 1 &&
         window.__godsEyeView.sceneDirector._getSelectedScene().title ===
           'QA Scene',
+    ),
+  );
+  const savedBefore = await page.evaluate(() =>
+    localStorage.getItem('godsEyeView.sceneProject.v2'),
+  );
+  const futureFile = path.join(shots, 'future.json');
+  fs.writeFileSync(futureFile, JSON.stringify({ version: 99, scenes: [] }));
+  await input.uploadFile(futureFile);
+  await page.waitForFunction(() =>
+    document.getElementById('scene-status').textContent.includes('$.version'),
+  );
+  check(
+    'Unsupported versions leave authored state and saved bytes unchanged',
+    await page.evaluate(
+      (saved) =>
+        localStorage.getItem('godsEyeView.sceneProject.v2') === saved &&
+        window.__godsEyeView.sceneDirector._getSelectedScene().title ===
+          'QA Scene',
+      savedBefore,
+    ),
+  );
+  const malformed = structuredClone(fixture);
+  malformed.scenes[0].shots[0].camera.lat = 91;
+  const malformedFile = path.join(shots, 'malformed.json');
+  fs.writeFileSync(malformedFile, JSON.stringify(malformed));
+  await input.uploadFile(malformedFile);
+  await page.waitForFunction(() =>
+    document.getElementById('scene-status').textContent.includes('camera.lat'),
+  );
+  check(
+    'Invalid camera field identifies its path without replacing the project',
+    await page.evaluate(
+      (saved) => localStorage.getItem('godsEyeView.sceneProject.v2') === saved,
+      savedBefore,
     ),
   );
   await page.screenshot({ path: path.join(shots, 'desktop.png') });

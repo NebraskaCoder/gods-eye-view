@@ -6,6 +6,7 @@ import {
 import { createCctvSource } from '../layers/cctv/source.js';
 import { createMessageSignsSource } from '../layers/messageSigns/source.js';
 import { createRadioSource } from '../layers/radio/source.js';
+import { createTransitSource } from '../layers/transit/source.js';
 import { createTrafficSource } from '../layers/traffic/source.js';
 import { createBikeshareSource } from '../layers/bikeshare/source.js';
 import { createInstallationSource } from '../layers/installations/source.js';
@@ -29,6 +30,7 @@ export function createStandaloneLayerSources() {
     messageSigns: createMessageSignsSource(),
     radio: createRadioSource(),
     traffic: createTrafficSource(),
+    transit: createTransitSource(),
     bikeshare: createBikeshareSource(),
     installations: createInstallationSource(),
     satellites: createSatelliteSource(),

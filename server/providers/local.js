@@ -14,6 +14,7 @@ import { messageSignsProxy } from './messageSigns.js';
 import { defaultSourceRoot } from './common/source-root.js';
 import { radioBrowserProxy } from './radio.js';
 import { gbfsProxy } from './gbfs.js';
+import { transitProxy } from './transit.js';
 import { adsbLolProxy } from './aircraft/adsb-lol.js';
 import { aisLiveProxy } from './vessels/ais-live.js';
 import { trackBackfillProxies } from './aircraft/tracks.js';
@@ -40,6 +41,7 @@ function localProviderPlugins() {
     messageSignsProxy(),
     radioBrowserProxy(),
     gbfsProxy(),
+    transitProxy(),
     adsbLolProxy(),
     aisLiveProxy(),
     trackBackfillProxies(),
