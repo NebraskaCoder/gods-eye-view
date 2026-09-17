@@ -27,6 +27,12 @@ import {
 import { sceneLayerPlan, sceneRequiresContextModeExit } from './scenePolicy.js';
 import { createSceneDataPacks } from './dataPacks/controller.js';
 import { createSceneInteractions } from './interactions.js';
+import { createSceneSharing } from './sharing.js';
+import {
+  createBundleAssets,
+  BUNDLE_SOURCE,
+  readSceneShare,
+} from '../director/sharing/bundle.js';
 import { createDefaultScenePacks } from './packs/defaults.js';
 import {
   layerStatesForShot,
@@ -51,7 +57,6 @@ import {
 import {
   parseSceneDocument,
   stringifySceneDocument,
-  SCENE_DOCUMENT_LIMITS,
   SceneDocumentError,
 } from '../director/document.js';
 
@@ -89,7 +94,15 @@ export class SceneDirector {
     this.dataManager = dataManager;
     this._isMapStackAvailable = isMapStackAvailable;
     this._scenePacks = scenePacks;
-    this._dataPacks = createSceneDataPacks(viewer, dataPacks);
+    this._bundleAssets = createBundleAssets();
+    this._dataPacks = createSceneDataPacks(viewer, {
+      ...dataPacks,
+      sources: {
+        ...dataPacks.sources,
+        [BUNDLE_SOURCE]: this._bundleAssets.source,
+      },
+    });
+    this._sharing = createSceneSharing(this);
     this._interactionTransitions = 0;
     this._interactions = createSceneInteractions(viewer, {
       available: () =>
@@ -217,6 +230,8 @@ export class SceneDirector {
     this._cameraHandoffUnsubscribe?.();
     this._removeCameraInput?.();
     this._cameraMotion?.destroy();
+    this._sharing?.destroy();
+    this._bundleAssets?.clear();
     this._interactions?.destroy();
     this._dataPacks?.destroy();
     this._controls?.destroy();
@@ -369,6 +384,7 @@ export class SceneDirector {
    * Exits silently if the scene-select element is missing (headless/test mode).
    */
   _initUI() {
+    this._sharing?.mount();
     this._controls = new SceneControls({
       subscribe: (listener) => this.subscribe(listener),
       read: () => ({
@@ -404,6 +420,7 @@ export class SceneDirector {
         next: () => this.runNextScene(),
         export: () => this.exportProject(),
         import: (file) => this.importProjectFile(file),
+        reviewImport: (file) => this._sharing.preview(file),
         download: () => this.downloadLastRunMetadata(),
         load: (sceneId, shotId) => this.loadShot(sceneId, shotId),
         deleteShot: (sceneId, shotId) => this.deleteShot(sceneId, shotId),
@@ -992,13 +1009,39 @@ export class SceneDirector {
       return Promise.resolve({ started: false, reason: 'destroyed' });
     this._sceneSeekGeneration++;
     this._interactionTransitions = 0;
-    return this._trackWork(this._loadShot(sceneId, shotId, options));
+    const previousGeneration = this._loadGeneration;
+    const work = this._loadShot(sceneId, shotId, options);
+    const generation = this._loadGeneration;
+    const ownsLoad = generation !== previousGeneration;
+    return this._trackWork(
+      work.then(
+        (result) => {
+          if (
+            ownsLoad &&
+            !result?.started &&
+            generation === this._loadGeneration
+          )
+            this._setSceneMediaPlayback();
+          return result;
+        },
+        (error) => {
+          if (ownsLoad && generation === this._loadGeneration)
+            this._setSceneMediaPlayback();
+          throw error;
+        },
+      ),
+    );
   }
 
   async _loadShot(
     sceneId,
     shotId,
-    { flyDuration = null, fromCamera = null, sceneSeek = null } = {},
+    {
+      flyDuration = null,
+      fromCamera = null,
+      sceneSeek = null,
+      playMedia = false,
+    } = {},
   ) {
     if (this._running) return { started: false, reason: 'already-running' };
     const { scene, shot } = this._getShot(sceneId, shotId);
@@ -1017,6 +1060,7 @@ export class SceneDirector {
     // manager) rather than merely ignored once it has already committed.
     this._cancelActiveSceneTravel();
     this._usesAuthoredCamera = !!shot.move;
+    this._setSceneMediaPlayback();
     this._interactions?.clear();
     this._dataPacks?.clear();
     this._loadAbort?.abort();
@@ -1047,6 +1091,10 @@ export class SceneDirector {
     if (token.cancelled) return;
     const seekState =
       sceneSeek && typeof sceneSeek === 'object' ? sceneSeek : null;
+    // Previous-scene disable revokes media ownership. Grant the target only
+    // after release and visual setup have succeeded for this live LOAD.
+    if (playMedia && !seekState)
+      this._setSceneMediaPlayback(scene, shot, token);
     const layerResult = await this._applyLayerStates(
       this._layerStatesForShot(scene, shot, {
         cameraSettled: seekState ? seekState.cameraProgress >= 1 : false,
@@ -1140,6 +1188,29 @@ export class SceneDirector {
    */
   _layerStatesForShot(scene, shot, options) {
     return layerStatesForShot(scene, shot, this._scenePacks, options);
+  }
+
+  /** Give opt-in media layers a transient, cancellable shot owner. */
+  _setSceneMediaPlayback(scene = null, shot = null, token = null) {
+    for (const module of this._sceneMediaModules || [])
+      module.setSceneMediaPlayback();
+    this._sceneMediaModules = new Set();
+    if (!scene || !shot || !token || token.cancelled || token.signal?.aborted)
+      return;
+    for (const [id, state] of Object.entries(shot.layers || {})) {
+      const module = this.dataManager?.layers?.get(id)?.module;
+      if (
+        !state?.enabled ||
+        typeof module?.setSceneMediaPlayback !== 'function'
+      )
+        continue;
+      module.setSceneMediaPlayback({
+        sceneId: scene.id,
+        shotId: shot.id,
+        token,
+      });
+      this._sceneMediaModules.add(module);
+    }
   }
 
   /** Keep installed append-pack shots on any surface declared by their source recipe. */
@@ -1297,6 +1368,7 @@ export class SceneDirector {
     const previousShot =
       scene.shots[(shotIndex - 1 + scene.shots.length) % scene.shots.length];
     const result = await this.loadShot(sceneId, shotId, {
+      playMedia: true,
       flyDuration: shot.durationSec || DEFAULT_SHOT_DURATION_SEC,
       fromCamera: shot.move
         ? null
@@ -1641,6 +1713,7 @@ export class SceneDirector {
     // load cannot land a stale shot's layers on top of the run's first shot.
     // Aborting cancels a layer transition already in flight; bumping the
     // generation disowns everything the load has not yet started.
+    this._setSceneMediaPlayback();
     this._cancelActiveSceneTravel();
     this._interactions?.clear();
     this._dataPacks?.clear();
@@ -1754,6 +1827,7 @@ export class SceneDirector {
    * @param {string} [reason='Stopped'] - Human-readable cancellation reason
    */
   stopScene(reason = 'Stopped') {
+    this._setSceneMediaPlayback();
     this._interactions?.clear();
     this._dataPacks?.clear();
     this._sceneSeekGeneration++;
@@ -1851,6 +1925,14 @@ export class SceneDirector {
     );
   }
 
+  /** Copied authoring and bundled-byte diagnostics for lifecycle checks. */
+  getSharingState() {
+    return {
+      ...this._sharing?.getState(),
+      assets: this._bundleAssets?.getState() || { count: 0, bytes: 0 },
+    };
+  }
+
   /** Export the entire project as a timestamped JSON file download. */
   exportProject() {
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -1881,30 +1963,66 @@ export class SceneDirector {
    * The file is normalized/migrated on load; invalid JSON shows an error status.
    * @param {File} file - Browser File object from an <input type="file">
    */
-  async importProjectFile(file) {
+  async importProjectFile(
+    file,
+    { prepared, expectedProject, selection, signal } = {},
+  ) {
     const generation = (this._importGeneration =
       (this._importGeneration || 0) + 1);
     try {
-      if (file.size > SCENE_DOCUMENT_LIMITS.bytes) {
-        throw new SceneDocumentError('$', 'file exceeds 5 MiB');
-      }
-      const text = await file.text();
-      if (this._destroyed || generation !== this._importGeneration) return;
-      const project = normalizeProject(parseSceneDocument(text));
+      if (!prepared) this._sharing?.close();
+      const input = prepared || (await readSceneShare(file, { signal }));
+      if (signal?.aborted) return false;
+      if (this._destroyed || generation !== this._importGeneration)
+        return false;
+      const project = normalizeProject(
+        parseSceneDocument(stringifySceneDocument(input.project)),
+      );
+      if (
+        expectedProject &&
+        expectedProject !== JSON.stringify(this._project, null, 2)
+      )
+        return false;
       // Validate before touching playback, selection or the saved project.
       this.stopScene('Importing project');
       await Promise.allSettled([...(this._pendingWork || [])]);
       if (this._destroyed || generation !== this._importGeneration) return;
+      if (
+        signal?.aborted ||
+        (expectedProject &&
+          expectedProject !== JSON.stringify(this._project, null, 2))
+      )
+        return false;
       this._project = project;
+      const retainedPaths = new Set(
+        project.scenes.flatMap((scene) =>
+          (scene.dataPacks || [])
+            .filter((pack) => pack.source.adapter === BUNDLE_SOURCE)
+            .map((pack) => pack.source.path),
+        ),
+      );
+      this._bundleAssets?.replace(
+        new Map(
+          [...(input.assets || [])].filter(([path]) => retainedPaths.has(path)),
+        ),
+      );
       this._storageReadError = null;
-      this._selectedSceneId = project.scenes[0]?.id || null;
-      this._selectedShotId = project.scenes[0]?.shots[0]?.id || null;
+      this._selectedSceneId =
+        selection?.sceneId || project.scenes[0]?.id || null;
+      this._selectedShotId =
+        selection?.shotId || project.scenes[0]?.shots[0]?.id || null;
       this._loadedSceneId = null;
       this._saveProject();
       this._publish({ type: 'project-imported', project });
       this._updateStatus(`Imported ${file.name}`);
+      return true;
     } catch (error) {
-      if (this._destroyed || generation !== this._importGeneration) return;
+      if (
+        signal?.aborted ||
+        this._destroyed ||
+        generation !== this._importGeneration
+      )
+        return false;
       this._updateStatus(
         error instanceof SceneDocumentError
           ? `Import failed: ${error.message}`
@@ -2253,6 +2371,7 @@ export class SceneDirector {
    * and resets UI buttons to the idle state.
    */
   _finishRun() {
+    this._setSceneMediaPlayback();
     this._clock.finish();
     this._setPlaybackKeyboardEnabled(false);
     // Covers the error path too: a run that threw mid-shot must not leave a
