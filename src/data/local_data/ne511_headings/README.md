@@ -36,6 +36,9 @@ mirrors, retries with backoff, and checkpoints after every chunk.
 A road axis fixes the line a camera looks along, not which way down it. Titles
 carrying a true `EB`/`WB` token break the tie; otherwise the id-hash prior
 picks the nearer end. Both ends keep the cone on the roadway, so
-`headingConfidence` stays `low` and the in-app calibration badge still reports
-a raw prior. Entries whose camera has moved are dropped by the `positionKey`
+`headingConfidence` stays `low`. That flag drives three things: the in-app
+calibration badge reports a raw prior, the HUD reads `HDG n° (ESTIMATED)` and
+the coverage wireframe draws dashed. A road-aligned bearing presents exactly
+like an id-hash one, since which way along the axis a camera looks is still
+inferred. Entries whose camera has moved are dropped by the `positionKey`
 guard rather than applied stale.

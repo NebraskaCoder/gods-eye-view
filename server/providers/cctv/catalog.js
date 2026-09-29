@@ -17,6 +17,7 @@ import {
   loadWarendorfSourcesFromCatalog,
   loadNswSourcesFromOpenData,
   loadCalgarySourcesFromOpenData,
+  loadDelDOTSourcesFromOpenData,
   loadNe511SourcesFromGraphQL,
 } from './sources.js';
 
@@ -86,6 +87,11 @@ const LIVE_PACKS = [
     name: 'calgary',
     enabled: () => envEnabled('CCTV_CALGARY_ENABLED'),
     load: loadCalgarySourcesFromOpenData,
+  },
+  {
+    name: 'deldot',
+    enabled: () => envEnabled('CCTV_DELDOT_ENABLED'),
+    load: loadDelDOTSourcesFromOpenData,
   },
   {
     name: 'ne511',

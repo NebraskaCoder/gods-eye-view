@@ -45,7 +45,9 @@ export function loadRoadHeadings(sourceRoot = process.cwd()) {
  *
  * Applied only where the camera still sits where the heading was computed.
  * `headingConfidence` stays 'low': the axis is measured but its direction is
- * inferred, so the calibration badge still reports a raw prior.
+ * inferred, so the camera keeps presenting as estimated — a raw prior on the
+ * calibration badge, and an (ESTIMATED) HUD tag with a dashed coverage
+ * wireframe (src/layers/cctv/headingConfidence.js).
  *
  * @param {Array<object>} sources - Normalized served sources (mutated).
  * @param {Record<string, object>} entries - Sidecar cameras map.
