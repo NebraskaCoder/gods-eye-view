@@ -255,15 +255,15 @@ test('PR B manually replaces provisional 3 with 4 after PR A publishes 3', () =>
     );
     writeCodecFixture(
       cwd,
-      [...reservationRows, ['pr-a', '3'], ['pr-b', '3']],
+      [...reservationRows, ['pr-a', '3'], ['pr-b', '4']],
       [
         { id: 'pr-a', token: '3' },
-        { id: 'pr-b', token: '3' },
+        { id: 'pr-b', token: '4' },
       ],
     );
     const corrected = runCheck();
     assert.equal(corrected.status, 0, corrected.stderr);
-    assert.match(corrected.stdout, /29 published, 1 new/);
+    assert.match(corrected.stdout, /30 published, 1 new/);
   });
 });
 
@@ -357,7 +357,7 @@ test('an isolated valid two-character fixture round-trips an l field beyond the 
     const params = new URLSearchParams([['v', '2']]);
     codec.encodeLayerStateParams(params, state);
     assert.ok(params.get('l').length > 64, 'fixture must cross the old cap');
-    assert.equal(params.get('l').length, 67);
+    assert.equal(params.get('l').length, 69);
     const restored = codec.decodeLayerStateParams(params);
     assert.deepEqual(restored?.enabledLayerIds, expectedLayerIds);
     assert.deepEqual(restored?.options, state.options);
@@ -375,7 +375,7 @@ test('checker reads a complete future base ledger and rejects retired-token reus
     },
     (cwd) => {
       const published = readPublishedLayerStateReservations('HEAD', cwd);
-      assert.equal(Object.keys(published).length, 29);
+      assert.equal(Object.keys(published).length, 30);
       assert.equal(published['retired-layer'], '00');
       assert.throws(
         () =>
