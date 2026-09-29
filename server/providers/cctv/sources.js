@@ -66,6 +66,7 @@ import {
   NE511_ANCHORS,
   NE511_GROUND_ELEVATION_M,
   DEFAULT_NE511_MAX_SOURCES,
+  NE511_MAX_CATALOG_BYTES,
 } from './constants.js';
 import {
   toFiniteNumber,
@@ -1840,7 +1841,7 @@ export async function loadNe511SourcesFromGraphQL() {
       console.warn('[CCTV] Nebraska 511 camera download failed:', resp.status);
       return [];
     }
-    const body = await resp.json();
+    const body = await readResponseJsonCapped(resp, NE511_MAX_CATALOG_BYTES);
     // GraphQL reports failure in the body with HTTP 200, both as top-level
     // `errors` and as a per-query `error` object.
     const queryResult = body?.data?.mapFeaturesQuery;

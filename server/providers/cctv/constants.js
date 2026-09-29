@@ -263,6 +263,8 @@ export const NE511_BOUNDS = Object.freeze({
   west: -104.2,
   zoom: 11,
 });
+/** The statewide camera list is well under a megabyte; this is headroom. */
+export const NE511_MAX_CATALOG_BYTES = 4 * 1024 * 1024;
 /** One camera entity is one source; the whole network plus headroom. */
 export const DEFAULT_NE511_MAX_SOURCES = 350;
 /**

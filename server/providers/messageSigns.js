@@ -8,6 +8,7 @@
  * and each has its own env kill switch.
  */
 import { loadNe511Signs } from './messageSigns/ne511.js';
+import { readResponseBytesCapped } from './common/http.js';
 
 /** Refresh interval for the cached sign list. */
 export const SIGNS_CACHE_MS = 60 * 1000;
@@ -15,6 +16,30 @@ export const SIGNS_CACHE_MS = 60 * 1000;
 export const SIGN_IMAGE_TIMEOUT_MS = 10 * 1000;
 /** A sign face is a small PNG; anything larger is not one. */
 export const SIGN_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
+
+/**
+ * Leading bytes of the image types a sign face may use. The registered URL's
+ * extension says what it should be; this says what it is.
+ */
+const IMAGE_SIGNATURES = [
+  { type: 'image/png', bytes: [0x89, 0x50, 0x4e, 0x47] },
+  { type: 'image/jpeg', bytes: [0xff, 0xd8, 0xff] },
+  { type: 'image/gif', bytes: [0x47, 0x49, 0x46, 0x38] },
+];
+
+/**
+ * Media type implied by a body's own signature, or '' when it is not an image.
+ *
+ * @param {Uint8Array} bytes
+ * @returns {string}
+ */
+export function imageMediaType(bytes) {
+  if (!bytes || bytes.length < 4) return '';
+  for (const { type, bytes: magic } of IMAGE_SIGNATURES) {
+    if (magic.every((byte, index) => bytes[index] === byte)) return type;
+  }
+  return '';
+}
 
 /**
  * App-origin path for one sign's image page.
@@ -153,8 +178,34 @@ export function messageSignsProxy({ cacheMs = SIGNS_CACHE_MS } = {}) {
             res.end(JSON.stringify({ error: 'Sign image upstream declined' }));
             return;
           }
-          const body = Buffer.from(await resp.arrayBuffer());
-          if (body.length > SIGN_IMAGE_MAX_BYTES) {
+          // Capped during the read: a declared oversize length is refused
+          // before any body arrives, and a chunked body is cancelled once it
+          // crosses the cap.
+          const bytes = await readResponseBytesCapped(
+            resp,
+            SIGN_IMAGE_MAX_BYTES,
+          );
+          // The bucket labels these application/octet-stream, so the body's
+          // own signature decides the media type. An HTML error page served
+          // from a .png URL is refused rather than relabelled as a sign face.
+          const mediaType = imageMediaType(bytes);
+          if (!mediaType) {
+            res.writeHead(502, {
+              'Content-Type': 'application/json',
+              'Cache-Control': 'no-store',
+            });
+            res.end(JSON.stringify({ error: 'Sign image is not an image' }));
+            return;
+          }
+          const body = Buffer.from(bytes);
+          res.writeHead(200, {
+            'Content-Type': mediaType,
+            'Content-Length': String(body.length),
+            'Cache-Control': 'no-store',
+          });
+          res.end(body);
+        } catch (error) {
+          if (error?.code === 'RESPONSE_TOO_LARGE') {
             res.writeHead(502, {
               'Content-Type': 'application/json',
               'Cache-Control': 'no-store',
@@ -162,15 +213,6 @@ export function messageSignsProxy({ cacheMs = SIGNS_CACHE_MS } = {}) {
             res.end(JSON.stringify({ error: 'Sign image too large' }));
             return;
           }
-          // The bucket labels these application/octet-stream; the extension
-          // was validated upstream, so serve the real media type.
-          res.writeHead(200, {
-            'Content-Type': 'image/png',
-            'Content-Length': String(body.length),
-            'Cache-Control': 'no-store',
-          });
-          res.end(body);
-        } catch (error) {
           console.warn('[Signs] image proxy:', error?.message || String(error));
           res.writeHead(502, {
             'Content-Type': 'application/json',

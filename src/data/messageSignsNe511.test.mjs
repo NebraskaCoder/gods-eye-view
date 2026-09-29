@@ -14,7 +14,9 @@ import {
   serializeSigns,
   signImagePath,
   loadAllSigns,
+  imageMediaType,
 } from '../../server/providers/messageSigns.js';
+import { readResponseBytesCapped } from '../../server/providers/common/http.js';
 
 /** Minimal normalized sign, for pack-merge assertions. */
 const sign1 = (id) => ({ id, views: [{ textLines: ['X'], imageUrl: '' }] });
@@ -228,4 +230,62 @@ test('every enabled pack is merged and a failing pack costs only its own signs',
     load: async () => [sign1('a')],
   };
   assert.equal((await loadAllSigns({ packs: [ok, dup] })).length, 1);
+});
+
+test('a sign face is identified by its own bytes, not its file extension', () => {
+  const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+  const gif = new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61]);
+  assert.equal(imageMediaType(png), 'image/png');
+  assert.equal(imageMediaType(jpeg), 'image/jpeg');
+  assert.equal(imageMediaType(gif), 'image/gif');
+  // An upstream error page served from a .png URL must not be relabelled.
+  assert.equal(imageMediaType(new TextEncoder().encode('<!DOCTYPE html>')), '');
+  assert.equal(imageMediaType(new Uint8Array([1, 2])), '');
+  assert.equal(imageMediaType(null), '');
+});
+
+test('the image read is bounded before and during the body', async () => {
+  const cap = 2 * 1024 * 1024;
+  // Declared oversize: refused without reading the body at all.
+  let cancelled = false;
+  const declared = new Response(new Uint8Array(8), {
+    headers: { 'content-length': String(cap + 1) },
+  });
+  Object.defineProperty(declared, 'body', {
+    value: {
+      cancel: async () => {
+        cancelled = true;
+      },
+    },
+  });
+  await assert.rejects(
+    readResponseBytesCapped(declared, cap),
+    (error) => error.code === 'RESPONSE_TOO_LARGE',
+  );
+  assert.equal(cancelled, true, 'the body is cancelled, not buffered');
+
+  // Streamed oversize with no declared length: cancelled once past the cap.
+  const chunk = new Uint8Array(64 * 1024);
+  let pushed = 0;
+  const streamed = new Response(
+    new ReadableStream({
+      pull(controller) {
+        pushed += chunk.byteLength;
+        controller.enqueue(chunk);
+      },
+    }),
+  );
+  await assert.rejects(
+    readResponseBytesCapped(streamed, cap),
+    (error) => error.code === 'RESPONSE_TOO_LARGE',
+  );
+  assert.ok(
+    pushed < cap * 4,
+    `read stopped near the cap, not unbounded (pushed ${pushed})`,
+  );
+
+  // A body inside the cap still reads whole.
+  const ok = new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47]));
+  assert.equal((await readResponseBytesCapped(ok, cap)).byteLength, 4);
 });

@@ -9,9 +9,12 @@
 import { NE511_GRAPHQL_URL, NE511_BOUNDS } from '../cctv/constants.js';
 import { toFiniteNumber } from '../cctv/normalize.js';
 import { directionToHeading } from '../../../src/data/directionText.js';
+import { readResponseJsonCapped } from '../common/http.js';
 
 /** Bounds one refresh so a stalled upstream cannot wedge the route. */
 export const NE511_SIGNS_TIMEOUT_MS = 15 * 1000;
+/** The statewide sign list is a few KB; anything near this is not that list. */
+export const NE511_SIGNS_MAX_BYTES = 4 * 1024 * 1024;
 /** Sign face images live on the vendor's bucket, not on NDOT's image host. */
 export const NE511_SIGN_IMAGE_ORIGIN =
   'https://crc-signs-s3.s3.us-west-2.amazonaws.com/';
@@ -225,7 +228,7 @@ export async function loadNe511Signs({ fetchImpl = fetch } = {}) {
       console.warn('[NE511 Signs] upstream declined:', resp.status);
       return [];
     }
-    const body = await resp.json();
+    const body = await readResponseJsonCapped(resp, NE511_SIGNS_MAX_BYTES);
     const query = body?.data?.mapFeaturesQuery;
     // GraphQL reports failure in the body with HTTP 200, two ways.
     const failure = body?.errors?.[0]?.message || query?.error?.message || '';
