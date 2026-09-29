@@ -151,7 +151,7 @@ export function createApplicationCatalog({
         createApplicationAlpr({ surface, source: sources.alpr }),
         satellites,
         createApplicationLaunches({ source: sources.launches, satellites }),
-        createApplicationTraffic({ source: sources.traffic }),
+        createApplicationTraffic({ source: sources.traffic, surface }),
         createApplicationCctv({ surface, source: sources.cctv }),
         createApplicationMessageSigns({
           surface,
