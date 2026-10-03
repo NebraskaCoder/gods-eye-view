@@ -93,31 +93,43 @@ export const SIGN_PACKS = [
  *
  * @param {object} [options]
  * @param {Array} [options.packs]
- * @returns {Promise<Array<object>>} Normalized signs, deduplicated by id.
+ * @returns {Promise<Array<{name:string, ok:boolean, signs:Array<object>}>>}
+ *   One outcome per enabled pack. `ok` separates a pack that answered with no
+ *   signs posting from one that could not be read.
  */
 export async function loadAllSigns({ packs = SIGN_PACKS } = {}) {
   const active = packs.filter((pack) => pack.enabled());
   const settled = await Promise.allSettled(active.map((pack) => pack.load()));
-  const signs = [];
-  for (const [index, result] of settled.entries()) {
+  return settled.map((result, index) => {
+    const { name } = active[index];
     if (result.status === 'fulfilled' && Array.isArray(result.value)) {
-      signs.push(...result.value);
-      continue;
+      return { name, ok: true, signs: result.value };
     }
     console.warn(
-      `[Signs] pack ${active[index].name} failed:`,
+      `[Signs] pack ${name} failed:`,
       result.reason?.message || result.reason,
     );
-  }
-  return Array.from(new Map(signs.map((sign) => [sign.id, sign])).values());
+    return { name, ok: false, signs: [] };
+  });
 }
 
 /**
- * Vite plugin serving the message-sign route.
+ * Cached sign list, refreshed on demand and shared by every request.
  *
- * @returns {{name:string, configureServer:Function, configurePreviewServer:Function}}
+ * Each pack is held separately: a pack that answers replaces its own signs,
+ * including with none, and a pack that fails keeps its last good list.
+ *
+ * @param {object} [options]
+ * @param {number} [options.cacheMs]
+ * @param {Array<object>} [options.packs]
+ * @returns {{getSigns:() => Promise<Array<object>>}}
  */
-export function messageSignsProxy({ cacheMs = SIGNS_CACHE_MS } = {}) {
+export function createSignsCache({
+  cacheMs = SIGNS_CACHE_MS,
+  packs = SIGN_PACKS,
+} = {}) {
+  /** @type {Map<string, Array<object>>} */
+  let byPack = new Map();
   /** @type {{at:number, signs:Array<object>}|null} */
   let cache = null;
   /** @type {Promise<Array<object>>|null} */
@@ -127,13 +139,21 @@ export function messageSignsProxy({ cacheMs = SIGNS_CACHE_MS } = {}) {
     if (cache && Date.now() - cache.at < cacheMs) return cache.signs;
     // Collapse concurrent refreshes onto one upstream round.
     if (!inFlight) {
-      inFlight = loadAllSigns()
-        .then((signs) => {
-          // Keep the last good list when a refresh comes back empty.
-          cache =
-            signs.length || !cache
-              ? { at: Date.now(), signs }
-              : { at: Date.now(), signs: cache.signs };
+      inFlight = loadAllSigns({ packs })
+        .then((outcomes) => {
+          byPack = new Map(
+            outcomes.map(({ name, ok, signs }) => [
+              name,
+              ok ? signs : byPack.get(name) || [],
+            ]),
+          );
+          const signs = [...byPack.values()].flat();
+          cache = {
+            at: Date.now(),
+            signs: Array.from(
+              new Map(signs.map((sign) => [sign.id, sign])).values(),
+            ),
+          };
           return cache.signs;
         })
         .finally(() => {
@@ -142,6 +162,20 @@ export function messageSignsProxy({ cacheMs = SIGNS_CACHE_MS } = {}) {
     }
     return inFlight;
   };
+
+  return { getSigns };
+}
+
+/**
+ * Vite plugin serving the message-sign route.
+ *
+ * @returns {{name:string, configureServer:Function, configurePreviewServer:Function}}
+ */
+export function messageSignsProxy({
+  cacheMs = SIGNS_CACHE_MS,
+  packs = SIGN_PACKS,
+} = {}) {
+  const { getSigns } = createSignsCache({ cacheMs, packs });
 
   const installMiddleware = (server) => {
     server.middlewares.use('/api/signs', async (req, res) => {

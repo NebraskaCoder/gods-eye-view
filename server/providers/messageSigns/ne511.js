@@ -199,48 +199,40 @@ export function normalizeSignFeature(feature) {
 }
 
 /**
- * Fetch and normalize the active sign list. Fails soft: a refusal, a GraphQL
- * error, or a malformed body yields [].
+ * Fetch and normalize the active sign list. A valid response with no signs
+ * posting resolves []; a refusal, a GraphQL error, or an unreadable body
+ * rejects, so callers can keep the last good list instead of clearing it.
  *
  * @param {object} [options]
  * @param {typeof fetch} [options.fetchImpl=fetch]
  * @returns {Promise<Array<object>>}
  */
 export async function loadNe511Signs({ fetchImpl = fetch } = {}) {
-  try {
-    const resp = await fetchImpl(NE511_GRAPHQL_URL, {
-      method: 'POST',
-      redirect: 'manual',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-        'User-Agent': 'gods-eye-view-ne511-proxy/1.0',
+  const resp = await fetchImpl(NE511_GRAPHQL_URL, {
+    method: 'POST',
+    redirect: 'manual',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      'User-Agent': 'gods-eye-view-ne511-proxy/1.0',
+    },
+    body: JSON.stringify({
+      query: NE511_SIGNS_QUERY,
+      variables: {
+        input: { ...NE511_BOUNDS, layerSlugs: ['electronicSigns'] },
       },
-      body: JSON.stringify({
-        query: NE511_SIGNS_QUERY,
-        variables: {
-          input: { ...NE511_BOUNDS, layerSlugs: ['electronicSigns'] },
-        },
-      }),
-      signal: AbortSignal.timeout(NE511_SIGNS_TIMEOUT_MS),
-    });
-    if (!resp.ok) {
-      console.warn('[NE511 Signs] upstream declined:', resp.status);
-      return [];
-    }
-    const body = await readResponseJsonCapped(resp, NE511_SIGNS_MAX_BYTES);
-    const query = body?.data?.mapFeaturesQuery;
-    // GraphQL reports failure in the body with HTTP 200, two ways.
-    const failure = body?.errors?.[0]?.message || query?.error?.message || '';
-    if (failure) {
-      console.warn('[NE511 Signs] query error:', failure);
-      return [];
-    }
-    const features = Array.isArray(query?.mapFeatures) ? query.mapFeatures : [];
-    const signs = features.map(normalizeSignFeature).filter(Boolean);
-    return Array.from(new Map(signs.map((s) => [s.id, s])).values());
-  } catch (error) {
-    console.warn('[NE511 Signs]', error?.message || String(error));
-    return [];
+    }),
+    signal: AbortSignal.timeout(NE511_SIGNS_TIMEOUT_MS),
+  });
+  if (!resp.ok) throw new Error(`upstream declined: ${resp.status}`);
+  const body = await readResponseJsonCapped(resp, NE511_SIGNS_MAX_BYTES);
+  const query = body?.data?.mapFeaturesQuery;
+  // GraphQL reports failure in the body with HTTP 200, two ways.
+  const failure = body?.errors?.[0]?.message || query?.error?.message || '';
+  if (failure) throw new Error(`query error: ${failure}`);
+  if (!Array.isArray(query?.mapFeatures)) {
+    throw new Error('response carries no sign list');
   }
+  const signs = query.mapFeatures.map(normalizeSignFeature).filter(Boolean);
+  return Array.from(new Map(signs.map((s) => [s.id, s])).values());
 }

@@ -15,6 +15,7 @@ import {
   signImagePath,
   loadAllSigns,
   imageMediaType,
+  createSignsCache,
 } from '../../server/providers/messageSigns.js';
 import { readResponseBytesCapped } from '../../server/providers/common/http.js';
 
@@ -152,29 +153,6 @@ test('the fetch posts one keyless query and refuses redirects', async (t) => {
   );
 });
 
-test('the fetch fails soft on transport, GraphQL and query errors', async (t) => {
-  t.mock.method(console, 'warn', () => {});
-  const cases = [
-    async () => new Response('nope', { status: 503 }),
-    async () => Response.json({ errors: [{ message: 'Server error.' }] }),
-    async () =>
-      Response.json({
-        data: {
-          mapFeaturesQuery: {
-            mapFeatures: null,
-            error: { message: 'bad bbox' },
-          },
-        },
-      }),
-    async () => {
-      throw new Error('network down');
-    },
-  ];
-  for (const fetchImpl of cases) {
-    assert.deepEqual(await loadNe511Signs({ fetchImpl }), []);
-  }
-});
-
 test('vendor image URLs never reach the client', () => {
   const signs = [
     {
@@ -217,9 +195,21 @@ test('every enabled pack is merged and a failing pack costs only its own signs',
     enabled: () => false,
     load: async () => [sign1('c')],
   };
-  const merged = await loadAllSigns({ packs: [ok, boom, off] });
+  const outcomes = await loadAllSigns({ packs: [ok, boom, off] });
   assert.deepEqual(
-    merged.map((s) => s.id),
+    outcomes.map(({ name, ok: answered, signs }) => [
+      name,
+      answered,
+      signs.map((s) => s.id),
+    ]),
+    [
+      ['ok', true, ['a']],
+      ['boom', false, []],
+    ],
+  );
+  const cache = createSignsCache({ cacheMs: 0, packs: [ok, boom, off] });
+  assert.deepEqual(
+    (await cache.getSigns()).map((s) => s.id),
     ['a'],
   );
 
@@ -229,7 +219,37 @@ test('every enabled pack is merged and a failing pack costs only its own signs',
     enabled: () => true,
     load: async () => [sign1('a')],
   };
-  assert.equal((await loadAllSigns({ packs: [ok, dup] })).length, 1);
+  const merged = createSignsCache({ cacheMs: 0, packs: [ok, dup] });
+  assert.equal((await merged.getSigns()).length, 1);
+});
+
+test('one pack failing keeps its own last good list beside a live pack', async (t) => {
+  t.mock.method(console, 'warn', () => {});
+  let round = 0;
+  const steady = {
+    name: 'steady',
+    enabled: () => true,
+    load: async () => (round === 1 ? [sign1('a')] : []),
+  };
+  const flaky = {
+    name: 'flaky',
+    enabled: () => true,
+    load: async () => {
+      round += 1;
+      if (round === 1) return [sign1('b')];
+      throw new Error('upstream down');
+    },
+  };
+  const cache = createSignsCache({ cacheMs: 0, packs: [flaky, steady] });
+  assert.deepEqual((await cache.getSigns()).map((s) => s.id).sort(), [
+    'a',
+    'b',
+  ]);
+  // The live pack retires its sign; the failed pack's sign is not touched.
+  assert.deepEqual(
+    (await cache.getSigns()).map((s) => s.id),
+    ['b'],
+  );
 });
 
 test('a sign face is identified by its own bytes, not its file extension', () => {
@@ -288,4 +308,95 @@ test('the image read is bounded before and during the body', async () => {
   // A body inside the cap still reads whole.
   const ok = new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47]));
   assert.equal((await readResponseBytesCapped(ok, cap)).byteLength, 4);
+});
+
+test('an empty upstream snapshot clears the board; a failed one does not', async (t) => {
+  t.mock.method(console, 'warn', () => {});
+  // A road warning that is taken down upstream must stop being displayed, and
+  // an upstream outage must not take a live warning down. Both arrive at the
+  // pack boundary as zero signs, so length alone cannot tell them apart.
+  let round = 0;
+  const pack = {
+    name: 'fake',
+    enabled: () => true,
+    load: async () => {
+      round += 1;
+      if (round === 1) return [sign1('a')];
+      if (round === 2) return [];
+      throw new Error('upstream down');
+    },
+  };
+  const cache = createSignsCache({ cacheMs: 0, packs: [pack] });
+
+  assert.deepEqual(
+    (await cache.getSigns()).map((s) => s.id),
+    ['a'],
+    'the active sign is served',
+  );
+  assert.deepEqual(
+    (await cache.getSigns()).map((s) => s.id),
+    [],
+    'a successful empty refresh clears the retired sign',
+  );
+  assert.deepEqual(
+    (await cache.getSigns()).map((s) => s.id),
+    [],
+    'a failed refresh with nothing live keeps serving nothing',
+  );
+});
+
+test('a failed refresh serves the last good list rather than clearing it', async (t) => {
+  t.mock.method(console, 'warn', () => {});
+  let round = 0;
+  const pack = {
+    name: 'fake',
+    enabled: () => true,
+    load: async () => {
+      round += 1;
+      if (round === 1) return [sign1('a')];
+      throw new Error('upstream down');
+    },
+  };
+  const cache = createSignsCache({ cacheMs: 0, packs: [pack] });
+  assert.deepEqual(
+    (await cache.getSigns()).map((s) => s.id),
+    ['a'],
+  );
+  assert.deepEqual(
+    (await cache.getSigns()).map((s) => s.id),
+    ['a'],
+    'the prior snapshot survives an upstream failure',
+  );
+});
+
+test('the pack reports failure and emptiness as different outcomes', async (t) => {
+  t.mock.method(console, 'warn', () => {});
+  // A valid response carrying no signs is a success, not a failure.
+  const empty = await loadNe511Signs({
+    fetchImpl: async () =>
+      Response.json({
+        data: { mapFeaturesQuery: { mapFeatures: [], error: null } },
+      }),
+  });
+  assert.deepEqual(empty, [], 'an empty valid snapshot resolves');
+
+  const failures = [
+    async () => new Response('nope', { status: 503 }),
+    async () => Response.json({ errors: [{ message: 'Server error.' }] }),
+    async () =>
+      Response.json({
+        data: {
+          mapFeaturesQuery: { mapFeatures: null, error: { message: 'bad' } },
+        },
+      }),
+    async () => {
+      throw new Error('network down');
+    },
+  ];
+  for (const fetchImpl of failures) {
+    await assert.rejects(
+      loadNe511Signs({ fetchImpl }),
+      'a failure is distinguishable from an empty snapshot',
+    );
+  }
 });
