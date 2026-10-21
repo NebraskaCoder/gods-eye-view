@@ -1,4 +1,5 @@
 import * as Cesium from 'cesium';
+import { t } from '../../i18n/index.js';
 import {
   LAYER_ID,
   LAYER_NAME,
@@ -269,7 +270,7 @@ export function createSignPresentation({ state, services, source }) {
           source.attribution?.description ||
           source.label ||
           LAYER_NAME,
-        label: 'Message sign',
+        label: t('Message sign'),
         latitude: record.lat,
         longitude: record.lon,
         properties: {

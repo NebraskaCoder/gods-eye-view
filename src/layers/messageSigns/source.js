@@ -1,3 +1,4 @@
+import { msg } from '../../i18n/marker.js';
 import { SIGNS_URL } from './policy.js';
 import { normalizeSignRecord } from './model.js';
 
@@ -28,14 +29,14 @@ export function createMessageSignsSource({
       }
       throw new Error(
         response.status === 504
-          ? 'Message signs timed out'
-          : 'Message signs temporarily unavailable',
+          ? msg('Message signs timed out')
+          : msg('Message signs temporarily unavailable'),
       );
     }
     const payload = await response.json();
     signal?.throwIfAborted();
     if (!Array.isArray(payload?.signs)) {
-      throw new Error('Message signs returned an incomplete response');
+      throw new Error(msg('Message signs returned an incomplete response'));
     }
     return {
       records: [
@@ -50,7 +51,7 @@ export function createMessageSignsSource({
   }
   return {
     fetch: fetchSigns,
-    label: 'Message signs',
+    label: msg('Message signs'),
     // No agency link here: the layer carries many packs, and each record
     // brings its own provider and licence for per-sign attribution.
     attribution: {

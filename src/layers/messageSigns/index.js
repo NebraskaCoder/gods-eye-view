@@ -1,4 +1,5 @@
 import * as Cesium from 'cesium';
+import { t } from '../../i18n/index.js';
 import {
   LAYER_ID,
   LAYER_NAME,
@@ -166,10 +167,10 @@ export function createMessageSignsLayer({ source, services } = {}) {
         chips: [
           {
             id: 'read-nearest-sign',
-            label: 'READ NEAREST',
+            label: t('READ NEAREST'),
             title: state.records.length
-              ? 'Fly to the nearest sign and read its board'
-              : 'No signs are currently posting',
+              ? t('Fly to the nearest sign and read its board')
+              : t('No signs are currently posting'),
             disabled: !state.enabled || !state.records.length,
             onClick: () => {
               const camera = state.viewer?.camera;
@@ -194,11 +195,12 @@ export function createMessageSignsLayer({ source, services } = {}) {
         ],
         legend: [
           {
-            label: 'Message boards',
+            label: t('Message boards'),
             color: Cesium.Color.fromCssColorString(BOARD_TEXT),
             count: state.records.length,
-            blurb:
+            blurb: t(
               'Live message boards, each facing the traffic it addresses. Zoom in to read the face; a multi-page board cycles.',
+            ),
           },
         ],
       };
