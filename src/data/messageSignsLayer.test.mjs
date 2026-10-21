@@ -214,6 +214,15 @@ test('the source throws on a refusal or a malformed body', async () => {
     source(async () => Response.json({ nope: true })).fetch(),
     /incomplete/,
   );
+  await assert.rejects(
+    source(async () =>
+      Response.json(
+        { error: 'No message-sign packs enabled', code: 'no-packs' },
+        { status: 503 },
+      ),
+    ).fetch(),
+    /No message-sign packs enabled/,
+  );
 });
 
 test('board geometry constants stay coherent', () => {

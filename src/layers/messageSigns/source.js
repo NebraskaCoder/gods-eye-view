@@ -22,10 +22,22 @@ export function createMessageSignsSource({
       signal,
     });
     if (!response.ok) {
+      const code =
+        response.status === 503
+          ? await response
+              .json()
+              .then((body) => body?.code)
+              .catch(() => null)
+          : null;
       try {
         await response.body?.cancel();
       } catch {
         /* already closed */
+      }
+      if (code === 'no-packs') {
+        throw new Error(
+          msg('No message-sign packs enabled; see .env.example to enable one'),
+        );
       }
       throw new Error(
         response.status === 504

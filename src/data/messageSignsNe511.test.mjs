@@ -16,6 +16,8 @@ import {
   loadAllSigns,
   imageMediaType,
   createSignsCache,
+  messageSignsProxy,
+  SIGN_PACKS,
 } from '../../server/providers/messageSigns.js';
 import { readResponseBytesCapped } from '../../server/providers/common/http.js';
 
@@ -399,4 +401,65 @@ test('the pack reports failure and emptiness as different outcomes', async (t) =
       'a failure is distinguishable from an empty snapshot',
     );
   }
+});
+
+/** Drive the plugin's middleware once and capture the response. */
+async function requestSigns(plugin, url) {
+  let handler = null;
+  plugin.configureServer({
+    middlewares: { use: (_path, fn) => (handler = fn) },
+  });
+  const res = {
+    status: 0,
+    body: '',
+    writeHead(status) {
+      this.status = status;
+    },
+    end(body) {
+      this.body = String(body ?? '');
+    },
+  };
+  await handler({ url }, res);
+  return res;
+}
+
+test('the Nebraska 511 sign pack is off unless the operator opts in', (t) => {
+  const pack = SIGN_PACKS.find(({ name }) => name === 'ne511');
+  const previous = process.env.SIGNS_NE511_ENABLED;
+  t.after(() => {
+    if (previous === undefined) delete process.env.SIGNS_NE511_ENABLED;
+    else process.env.SIGNS_NE511_ENABLED = previous;
+  });
+  delete process.env.SIGNS_NE511_ENABLED;
+  assert.equal(pack.enabled(), false);
+  process.env.SIGNS_NE511_ENABLED = '0';
+  assert.equal(pack.enabled(), false);
+  process.env.SIGNS_NE511_ENABLED = '1';
+  assert.equal(pack.enabled(), true);
+});
+
+test('with no pack enabled the route says so instead of serving an empty board', async () => {
+  let loads = 0;
+  const packs = [
+    {
+      name: 'off',
+      enabled: () => false,
+      load: async () => {
+        loads++;
+        return [sign1('a')];
+      },
+    },
+  ];
+  const res = await requestSigns(messageSignsProxy({ packs }), '/');
+  assert.equal(res.status, 503);
+  assert.equal(JSON.parse(res.body).code, 'no-packs');
+  assert.equal(loads, 0);
+
+  packs[0].enabled = () => true;
+  const served = await requestSigns(messageSignsProxy({ packs }), '/');
+  assert.equal(served.status, 200);
+  assert.deepEqual(
+    JSON.parse(served.body).signs.map(({ id }) => id),
+    ['a'],
+  );
 });

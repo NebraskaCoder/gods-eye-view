@@ -167,8 +167,11 @@ const LIVE_PACKS = [
     load: loadTaiwanSources,
   },
   {
+    // NDOT grants no reuse licence for its camera images (transportation
+    // purposes only, unless otherwise approved), so the pack is off unless
+    // the operator opts in (see DATA_SOURCES.md).
     name: 'ne511',
-    enabled: () => envEnabled('CCTV_NE511_ENABLED'),
+    enabled: () => envOptIn('CCTV_NE511_ENABLED'),
     load: loadNe511SourcesFromGraphQL,
   },
 ];

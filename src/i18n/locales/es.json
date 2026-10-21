@@ -2944,6 +2944,7 @@
   "Message boards": "Paneles de mensajes",
   "Live message boards, each facing the traffic it addresses. Zoom in to read the face; a multi-page board cycles.": "Paneles de mensajes en vivo, cada uno orientado hacia el tráfico al que se dirige. Acércate para leer la cara; un panel de varias páginas las alterna.",
   "Message sign": "Señal de mensajes",
+  "No message-sign packs enabled; see .env.example to enable one": "No hay paquetes de señales de mensajes activados; consulta .env.example para activar uno",
   "Message signs timed out": "Las señales de mensajes tardaron demasiado en responder",
   "Message signs temporarily unavailable": "Señales de mensajes no disponibles temporalmente",
   "Message signs returned an incomplete response": "Las señales de mensajes devolvieron una respuesta incompleta",

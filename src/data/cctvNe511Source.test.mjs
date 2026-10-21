@@ -12,6 +12,7 @@ import {
   NE511_GRAPHQL_URL,
   NE511_GROUND_ELEVATION_M,
 } from '../../server/providers/cctv/constants.js';
+import { createCctvCatalog } from '../../server/providers/cctv/catalog.js';
 import { DEFAULT_NE511_HEADINGS_FILE } from '../../server/providers/cctv/headings.js';
 
 const camera = (overrides = {}) => ({
@@ -267,5 +268,70 @@ test('the road-heading table is read from the catalog source root, not the worki
     assert.ok([12, 192].includes(fromRoot.headingDeg), 'table at the root');
   } finally {
     if (previous !== undefined) process.env.CCTV_NE511_HEADINGS_FILE = previous;
+  }
+});
+
+/** Put process.env back exactly as it was. */
+const restoreEnv = (saved) => {
+  for (const key of Object.keys(process.env)) {
+    if (key in saved) continue;
+    delete process.env[key];
+  }
+  Object.assign(process.env, saved);
+};
+
+/**
+ * One catalog refresh with every other pack answered empty, so only the
+ * Nebraska registration is exercised. Returns the URLs requested.
+ */
+const runCatalog = async (t) => {
+  const requested = [];
+  t.mock.method(console, 'log', () => {});
+  t.mock.method(console, 'warn', () => {});
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    const href = String(url);
+    requested.push(href);
+    if (href === NE511_GRAPHQL_URL) return graphqlBody([camera()]);
+    return Response.json([]);
+  });
+  const sources = await createCctvCatalog({ sourceRoot: '/nonexistent' })();
+  return { requested, sources };
+};
+
+test('with CCTV_NE511_ENABLED=1 the Nebraska pack is wired into the catalog', async (t) => {
+  const saved = { ...process.env };
+  try {
+    delete process.env.CCTV_SOURCES_FILE;
+    delete process.env.CCTV_SOURCES_JSON;
+    process.env.CCTV_NE511_ENABLED = '1';
+    const { requested, sources } = await runCatalog(t);
+    assert.ok(requested.includes(NE511_GRAPHQL_URL));
+    assert.deepEqual(
+      sources.filter((s) => s.cityId === 'nebraska').map((s) => s.id),
+      ['ne511-1'],
+    );
+  } finally {
+    restoreEnv(saved);
+  }
+});
+
+test('the Nebraska pack stays off unless CCTV_NE511_ENABLED=1', async (t) => {
+  for (const flag of [undefined, '', '0', 'true']) {
+    const saved = { ...process.env };
+    try {
+      delete process.env.CCTV_SOURCES_FILE;
+      delete process.env.CCTV_SOURCES_JSON;
+      if (flag === undefined) delete process.env.CCTV_NE511_ENABLED;
+      else process.env.CCTV_NE511_ENABLED = flag;
+      const { requested, sources } = await runCatalog(t);
+      assert.equal(requested.includes(NE511_GRAPHQL_URL), false, `${flag}`);
+      assert.deepEqual(
+        sources.filter((s) => s.cityId === 'nebraska'),
+        [],
+      );
+    } finally {
+      restoreEnv(saved);
+      t.mock.restoreAll();
+    }
   }
 });

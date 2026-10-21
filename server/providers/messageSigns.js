@@ -74,16 +74,19 @@ export function serializeSigns(signs) {
   }));
 }
 
-/** Env kill switch: unset or anything but "0" means enabled. */
-const envEnabled = (name) => String(process.env[name] || '1').trim() !== '0';
+/** Env opt-in: only "1" enables a pack. */
+const envOptIn = (name) => String(process.env[name] || '').trim() === '1';
 
 /**
  * Agency packs, in merge order. Each resolves normalized sign records.
  */
 export const SIGN_PACKS = [
   {
+    // NDOT grants no reuse licence for its 511 content (transportation
+    // purposes only, unless otherwise approved), so the pack is off unless
+    // the operator opts in (see DATA_SOURCES.md).
     name: 'ne511',
-    enabled: () => envEnabled('SIGNS_NE511_ENABLED'),
+    enabled: () => envOptIn('SIGNS_NE511_ENABLED'),
     load: loadNe511Signs,
   },
 ];
@@ -263,6 +266,19 @@ export function messageSignsProxy({
           'Cache-Control': 'no-store',
         });
         res.end(JSON.stringify({ error: 'Not found' }));
+        return;
+      }
+      if (!packs.some((pack) => pack.enabled())) {
+        res.writeHead(503, {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
+        });
+        res.end(
+          JSON.stringify({
+            error: 'No message-sign packs enabled',
+            code: 'no-packs',
+          }),
+        );
         return;
       }
       try {

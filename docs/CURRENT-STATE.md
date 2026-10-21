@@ -3495,8 +3495,8 @@ its criteria cannot be silently ignored.
 | Satellites             | CelesTrak                                                                                                                                                                                       | `src/data/satellites.js`                              | `/api/celestrak`                                         | 120s                                                                              |
 | Space Missions (30d)   | Launch Library 2 + CelesTrak                                                                                                                                                                    | `src/data/rocketLaunches.js`                          | `/api/launches` + `/api/celestrak/active`                | 5 min                                                                             |
 | Traffic | Selectable TomTom / OpenStreetMap / Hybrid roads; optional TomTom flow (BYOK) | `src/data/traffic.js` | browser-direct OpenFreeMap tiles; `/api/tomtom` for flow | viewport-driven; capped tile cache |
-| CCTV                   | Austin + Caltrans (CA) + TfL London + Ontario 511 + Fintraffic (FI) + DriveBC (BC) + TxDOT (TX) + Estonia (Tallinn, Tarktee) + Live Traffic NSW + Open Calgary Open Data + Statens vegvesen (NO, stills + live HLS, Kartverket ground heights) + King County (WA) Open Data + WSDOT (WA) Open Data + NYC DOT TMC (opt-in) + City of Toronto RESCU + Catalonia (Servei Català de Trànsit) + Hong Kong Transport Department + FL511 (FL, opt-in) + Nebraska 511 (NE) + Freeway Bureau, MOTC (Taiwan) + Street View fallback | `src/data/cctv.js`                                    | `/api/cctv`                                              | 10s (active)                                                                      |
-| Message Signs | Electronic message signs — Nebraska 511 (NDOT) pack | `src/data/messageSigns.js` | `/api/signs` | 60s |
+| CCTV                   | Austin + Caltrans (CA) + TfL London + Ontario 511 + Fintraffic (FI) + DriveBC (BC) + TxDOT (TX) + Estonia (Tallinn, Tarktee) + Live Traffic NSW + Open Calgary Open Data + Statens vegvesen (NO, stills + live HLS, Kartverket ground heights) + King County (WA) Open Data + WSDOT (WA) Open Data + NYC DOT TMC (opt-in) + City of Toronto RESCU + Catalonia (Servei Català de Trànsit) + Hong Kong Transport Department + FL511 (FL, opt-in) + Nebraska 511 (NE, opt-in) + Freeway Bureau, MOTC (Taiwan) + Street View fallback | `src/data/cctv.js`                                    | `/api/cctv`                                              | 10s (active)                                                                      |
+| Message Signs | Electronic message signs — Nebraska 511 (NDOT) pack (opt-in) | `src/data/messageSigns.js` | `/api/signs` | 60s |
 | Radio                  | Radio Browser (public-domain station directory)                                                                                                                                                 | `src/data/radio.js`                                   | `/api/radio/stations`, `/api/radio/click/:uuid`          | 45 min directory refresh                                                          |
 | Transit 🚌             | Operator GTFS-Realtime VehiclePositions (7 keyless regions, `src/data/transitFeeds.js`)                                                                                                         | `src/layers/transit/` via `src/app/layers/transit.js` | `/api/transit`                                           | 15s (poll + delayed playback)                                                     |
 | Bikeshare 🚲           | GBFS (Lyft + BCycle + Social Bicycles + PBSC incl. Bike Share Toronto, Bike Itaú (Brazil), Bicing (Barcelona) and seven other Spanish cities + Urban Sharing, Entur, JCDecaux (Lillestrøm, Valencia, Seville) + nextbike (AMBici))                                                                                                                                        | `src/data/bikeshare.js`                               | `/api/gbfs`                                              | 60s                                                                               |
@@ -4486,8 +4486,10 @@ silently demoting every later lookup for the session.
   requires a developer key, so the pack needs `ONTARIO_511_API_KEY` and is skipped without one
   (#1228). All sources are RAW PRIOR
   poses, and the layer is stills-first.
-  Nebraska 511 (cap 350, `CCTV_NE511_MAX_SOURCES`, kill switch `CCTV_NE511_ENABLED=0`)
-  adds NDOT highway cameras statewide. The catalog is one keyless POST to the CARS-X
+  Nebraska 511 (cap 350, `CCTV_NE511_MAX_SOURCES`, opt-in `CCTV_NE511_ENABLED=1`)
+  adds NDOT highway cameras statewide. It is off by default: NDOT's Highway Camera Policy
+  limits the cameras and their images to transportation purposes unless otherwise approved
+  (DATA_SOURCES.md). The catalog is one keyless POST to the CARS-X
   GraphQL endpoint behind the 511 site (`mapFeaturesQuery`,
   `layerSlugs: ["normalCameras"]`) at a zoom past the server's clustering threshold; at
   the site's own statewide zoom dense areas collapse into `Cluster` entries carrying no
@@ -4594,8 +4596,10 @@ silently demoting every later lookup for the session.
 The `message-signs` layer (share token `5`) renders electronic message signs as
 readable board faces rather than markers. Like the CCTV layer it is
 agency-agnostic: one layer, N packs under `server/providers/messageSigns.js`,
-each with its own env kill switch. Nebraska 511 (NDOT, `SIGNS_NE511_ENABLED`)
-is the first pack.
+each with its own env switch. Nebraska 511 (NDOT) is the first pack, opt-in
+with `SIGNS_NE511_ENABLED=1` under the same NDOT terms as the camera pack. With
+no pack enabled, `/api/signs` answers 503 with `code: 'no-packs'` and the layer
+row says so, rather than showing an empty board.
 
 The route is server-side by necessity: the upstream POST answers
 `Access-Control-Allow-Origin: *`, but its JSON content type forces a CORS
