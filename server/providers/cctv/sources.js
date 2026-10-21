@@ -3760,7 +3760,9 @@ export function ne511CameraToSource(feature) {
  *
  * @returns {Promise<Array<object>>} Normalized camera source objects.
  */
-export async function loadNe511SourcesFromGraphQL() {
+export async function loadNe511SourcesFromGraphQL({
+  sourceRoot = process.cwd(),
+} = {}) {
   try {
     const resp = await fetch(NE511_GRAPHQL_URL, {
       method: 'POST',
@@ -3809,7 +3811,7 @@ export async function loadNe511SourcesFromGraphQL() {
     const prioritized = prioritizeSources(unique, maxCount, NE511_ANCHORS);
     // NDOT publishes no bearing, so the headings above are id-hash priors.
     // The sidecar replaces them where it has a road-aligned bearing.
-    const aligned = joinRoadHeadings(prioritized, loadRoadHeadings());
+    const aligned = joinRoadHeadings(prioritized, loadRoadHeadings(sourceRoot));
     console.log(
       `[CCTV] Loaded Nebraska 511 camera sources: ${unique.length} active (using nearest ${prioritized.length})`,
     );

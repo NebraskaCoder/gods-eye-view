@@ -1,5 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import {
   loadNe511SourcesFromGraphQL,
   ne511CameraToSource,
@@ -9,6 +12,7 @@ import {
   NE511_GRAPHQL_URL,
   NE511_GROUND_ELEVATION_M,
 } from '../../server/providers/cctv/constants.js';
+import { DEFAULT_NE511_HEADINGS_FILE } from '../../server/providers/cctv/headings.js';
 
 const camera = (overrides = {}) => ({
   __typename: 'Camera',
@@ -236,5 +240,32 @@ test('CCTV_NE511_MAX_SOURCES bounds the pack', async (t) => {
   } finally {
     if (previous === undefined) delete process.env.CCTV_NE511_MAX_SOURCES;
     else process.env.CCTV_NE511_MAX_SOURCES = previous;
+  }
+});
+
+test('the road-heading table is read from the catalog source root, not the working directory', async (t) => {
+  t.mock.method(console, 'log', () => {});
+  const remote = camera({ uri: 'camera/7', bbox: [-99.5, 41.5, -99.5, 41.5] });
+  t.mock.method(globalThis, 'fetch', async () => graphqlBody([remote]));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gev-ne511-root-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const file = path.join(root, DEFAULT_NE511_HEADINGS_FILE);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(
+    file,
+    JSON.stringify({
+      schemaVersion: 2,
+      cameras: { '41.50000,-99.50000': { status: 'ok', axisDeg: 12 } },
+    }),
+  );
+  const previous = process.env.CCTV_NE511_HEADINGS_FILE;
+  delete process.env.CCTV_NE511_HEADINGS_FILE;
+  try {
+    const [fromCwd] = await loadNe511SourcesFromGraphQL();
+    assert.ok(![12, 192].includes(fromCwd.headingDeg), 'no table at the cwd');
+    const [fromRoot] = await loadNe511SourcesFromGraphQL({ sourceRoot: root });
+    assert.ok([12, 192].includes(fromRoot.headingDeg), 'table at the root');
+  } finally {
+    if (previous !== undefined) process.env.CCTV_NE511_HEADINGS_FILE = previous;
   }
 });

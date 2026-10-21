@@ -75,6 +75,23 @@ test('a missing or malformed sidecar means no headings, never an error', () => {
 test('a valid sidecar replaces the id-hash prior with the road heading', () => {
   const entries = withSidecar(
     {
+      schemaVersion: 2,
+      cameras: { [positionKey(CAMERA)]: { status: 'ok', axisDeg: 77 } },
+    },
+    () => loadRoadHeadings(),
+  );
+  const source = { ...CAMERA, headingDeg: 157.5, headingConfidence: 'low' };
+  joinRoadHeadings([source], entries);
+  // The prior picks the nearer end of the axis.
+  assert.equal(source.headingDeg, 77);
+  // The axis is measured but its direction inferred, so the camera still
+  // presents as a raw prior.
+  assert.equal(source.headingConfidence, 'low');
+});
+
+test('a sidecar from the id-keyed schema is ignored rather than misread', () => {
+  const entries = withSidecar(
+    {
       schemaVersion: 1,
       cameras: {
         'ne511-148': {
@@ -87,38 +104,42 @@ test('a valid sidecar replaces the id-hash prior with the road heading', () => {
     },
     () => loadRoadHeadings(),
   );
-  const source = { ...CAMERA, headingDeg: 157.5, headingConfidence: 'low' };
-  joinRoadHeadings([source], entries);
-  assert.equal(source.headingDeg, 257);
-  // The axis is measured but its direction inferred, so the camera still
-  // presents as a raw prior.
-  assert.equal(source.headingConfidence, 'low');
+  assert.deepEqual(entries, {});
+});
+
+test('a renumbered camera keeps its heading because the join is by position', () => {
+  const entries = { [positionKey(CAMERA)]: { status: 'ok', axisDeg: 77 } };
+  const renumbered = { ...CAMERA, id: 'ne511-659', headingDeg: 300 };
+  joinRoadHeadings([renumbered], entries);
+  assert.equal(renumbered.headingDeg, 257);
+});
+
+test('co-sited masts take their facing from their own titles', () => {
+  const entries = { [positionKey(CAMERA)]: { status: 'ok', axisDeg: 90.3 } };
+  const east = { ...CAMERA, name: 'I-80: Mile 440 EB', headingDeg: 260 };
+  const west = { ...CAMERA, name: 'I-80: Mile 440 WB', headingDeg: 80 };
+  joinRoadHeadings([east, west], entries);
+  assert.equal(east.headingDeg, 90.3);
+  assert.equal(west.headingDeg, 270.3);
 });
 
 test('a moved camera falls back to its prior instead of a stale bearing', () => {
-  const entries = {
-    'ne511-148': {
-      positionKey: '41.00000,-96.00000',
-      status: 'ok',
-      headingDeg: 257,
-    },
-  };
+  const entries = { '41.00000,-96.00000': { status: 'ok', axisDeg: 77 } };
   const source = { ...CAMERA, headingDeg: 157.5 };
   joinRoadHeadings([source], entries);
   assert.equal(source.headingDeg, 157.5);
 });
 
 test('only usable entries are applied', () => {
-  const key = positionKey(CAMERA);
   const cases = [
-    { positionKey: key, status: 'no-road' },
-    { positionKey: key, status: 'ok', headingDeg: null },
-    { positionKey: key, status: 'ok' },
+    { status: 'no-road' },
+    { status: 'ok', axisDeg: null },
+    { status: 'ok' },
     undefined,
   ];
   for (const entry of cases) {
     const source = { ...CAMERA, headingDeg: 157.5 };
-    joinRoadHeadings([source], { 'ne511-148': entry });
+    joinRoadHeadings([source], { [positionKey(CAMERA)]: entry });
     assert.equal(source.headingDeg, 157.5, `entry ${JSON.stringify(entry)}`);
   }
   // A junk entries map is a no-op, not a throw.
@@ -128,15 +149,25 @@ test('only usable entries are applied', () => {
 });
 
 test('applied headings are wrapped into [0,360)', () => {
-  const source = { ...CAMERA, headingDeg: 0 };
+  const source = { ...CAMERA, headingDeg: 250 };
   joinRoadHeadings([source], {
-    'ne511-148': {
-      positionKey: positionKey(CAMERA),
-      status: 'ok',
-      headingDeg: -103,
-    },
+    [positionKey(CAMERA)]: { status: 'ok', axisDeg: -103 },
   });
   assert.equal(source.headingDeg, 257);
+});
+
+test('the shipped sidecar loads, keyed by position', () => {
+  const previous = process.env.CCTV_NE511_HEADINGS_FILE;
+  delete process.env.CCTV_NE511_HEADINGS_FILE;
+  try {
+    const root = path.resolve(import.meta.dirname, '../..');
+    const entries = loadRoadHeadings(root);
+    const keys = Object.keys(entries);
+    assert.ok(keys.length > 300, `${keys.length} entries`);
+    assert.ok(keys.every((key) => /^-?\d+\.\d{5},-?\d+\.\d{5}$/.test(key)));
+  } finally {
+    if (previous !== undefined) process.env.CCTV_NE511_HEADINGS_FILE = previous;
+  }
 });
 
 test('the precompute CLI parses its flags and batches without mutating', () => {

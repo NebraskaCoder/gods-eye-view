@@ -8,7 +8,9 @@ Nebraska 511 publishes no camera bearing, so the pack falls back to a
 deterministic id-hash heading. That is stable but arbitrary: it aims a camera's
 cone across the highway as often as along it.
 
-Each entry here is instead the bearing of the nearest OSM road segment.
+Each entry here is instead the axis of the nearest OSM road segment, keyed by
+camera position (`positionKey`, five decimals, ~1 m) rather than by camera id:
+NDOT renumbers its cameras, while a mast stays where it is.
 
 ## Provenance
 
@@ -33,12 +35,13 @@ mirrors, retries with backoff, and checkpoints after every chunk.
 
 ## Accuracy
 
-A road axis fixes the line a camera looks along, not which way down it. Titles
-carrying a true `EB`/`WB` token break the tie; otherwise the id-hash prior
-picks the nearer end. Both ends keep the cone on the roadway, so
+A road axis fixes the line a camera looks along, not which way down it. The
+catalog resolves that at load: titles carrying a true `EB`/`WB`/`NB`/`SB` token
+break the tie; otherwise the id-hash prior picks the nearer end. Masts sharing
+a position share one axis and still face their own ways. Both ends keep the cone on the roadway, so
 `headingConfidence` stays `low`. That flag drives three things: the in-app
 calibration badge reports a raw prior, the HUD reads `HDG n° (ESTIMATED)` and
 the coverage wireframe draws dashed. A road-aligned bearing presents exactly
 like an id-hash one, since which way along the axis a camera looks is still
-inferred. Entries whose camera has moved are dropped by the `positionKey`
-guard rather than applied stale.
+inferred. A camera at a position with no entry (moved or new) keeps its
+id-hash prior until the table is regenerated.

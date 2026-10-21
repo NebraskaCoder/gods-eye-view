@@ -14,8 +14,10 @@
  * Usage:
  *   node scripts/precompute-ne511-headings.mjs [--limit N] [--force] [--out FILE]
  *
- * Resumable: cameras already recorded at the same position are kept and only
- * the missing ones are queried. --force re-queries everything.
+ * Entries are keyed by camera position and hold only the road axis; the
+ * catalog resolves which way along it each camera looks. Resumable: positions
+ * already recorded are kept and only new ones are queried. --force re-queries
+ * everything.
  */
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -24,10 +26,12 @@ import { loadNe511SourcesFromGraphQL } from '../server/providers/cctv/sources.js
 import {
   buildRoadQuery,
   nearestRoadAxis,
-  resolveAxisDirection,
   positionKey,
 } from '../server/providers/cctv/roadHeadings.js';
-import { DEFAULT_NE511_HEADINGS_FILE } from '../server/providers/cctv/headings.js';
+import {
+  DEFAULT_NE511_HEADINGS_FILE,
+  NE511_HEADINGS_SCHEMA_VERSION,
+} from '../server/providers/cctv/headings.js';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 /** Small unions keep each query inside the mirrors' time limits. */
@@ -115,7 +119,9 @@ async function fetchWays(body) {
 async function readExisting(resolved) {
   try {
     const parsed = JSON.parse(await readFile(resolved, 'utf8'));
-    return parsed?.cameras && typeof parsed.cameras === 'object'
+    return parsed?.schemaVersion === NE511_HEADINGS_SCHEMA_VERSION &&
+      parsed.cameras &&
+      typeof parsed.cameras === 'object'
       ? parsed.cameras
       : {};
   } catch {
@@ -127,7 +133,7 @@ async function readExisting(resolved) {
 async function writeTable(resolved, cameras) {
   await mkdir(path.dirname(resolved), { recursive: true });
   const payload = {
-    schemaVersion: 1,
+    schemaVersion: NE511_HEADINGS_SCHEMA_VERSION,
     provider: 'openstreetmap-overpass',
     source: 'https://www.openstreetmap.org/copyright',
     license: 'ODbL 1.0',
@@ -154,12 +160,18 @@ async function main() {
   }
 
   const cameras = args.force ? {} : await readExisting(resolved);
-  // Keep an entry only while the camera still sits where it was sampled.
-  const todo = sources.filter(
-    (source) => cameras[source.id]?.positionKey !== positionKey(source),
-  );
+  // Masts sharing a position share one road axis, so each is queried once.
+  const todo = [
+    ...new Map(
+      sources
+        .filter(
+          (source) => positionKey(source) && !cameras[positionKey(source)],
+        )
+        .map((source) => [positionKey(source), source]),
+    ).values(),
+  ];
   console.log(
-    `Nebraska 511: ${sources.length} cameras, ${sources.length - todo.length} already resolved, ${todo.length} to query.`,
+    `Nebraska 511: ${sources.length} cameras, ${todo.length} new position(s) to query.`,
   );
   if (!todo.length) {
     await writeTable(resolved, cameras);
@@ -185,20 +197,13 @@ async function main() {
     for (const source of chunk) {
       const axis = nearestRoadAxis(source, ways);
       if (axis === null) {
-        cameras[source.id] = {
-          positionKey: positionKey(source),
-          status: 'no-road',
-        };
+        cameras[positionKey(source)] = { status: 'no-road' };
         missed += 1;
         continue;
       }
-      cameras[source.id] = {
-        positionKey: positionKey(source),
+      cameras[positionKey(source)] = {
         status: 'ok',
         axisDeg: Number(axis.toFixed(2)),
-        headingDeg: Number(
-          resolveAxisDirection(axis, source.name, source.headingDeg).toFixed(2),
-        ),
       };
       aligned += 1;
     }

@@ -4500,7 +4500,10 @@ silently demoting every later lookup for the session.
   the list host cannot be steered.
   `scripts/precompute-ne511-headings.mjs` resolves each camera against OSM road
   geometry offline and writes `src/data/local_data/ne511_headings/`, which
-  `server/providers/cctv/headings.js` joins at catalog load. It runs offline because
+  `server/providers/cctv/headings.js` joins at catalog load. Entries are keyed by camera
+  position (`positionKey`, ~1 m), not camera id, because NDOT renumbers its cameras; each
+  holds only the road axis, and which way along it a camera looks is resolved at load from
+  its title's travel token (`EB`/`WB`/`NB`/`SB`) or, failing that, its id-hash prior. It runs offline because
   `server/providers/cctv` may not import the overpass package (check:boundaries) and
   one `around` query per camera on every refresh is the API sweep the Overpass usage
   policy asks heavy consumers to replace with a local extract. A road axis fixes the
@@ -4508,8 +4511,8 @@ silently demoting every later lookup for the session.
   `low`: the calibration badge reports a raw prior, the HUD reads
   `HDG n° (ESTIMATED)` and the coverage wireframe draws dashed
   (`src/layers/cctv/headingConfidence.js`). A road-aligned bearing therefore
-  presents exactly like an id-hash one. An entry applies only while the camera
-  still sits where it was sampled (`positionKey`).
+  presents exactly like an id-hash one. A camera that moves or is new has no
+  entry and keeps its id-hash prior until the table is regenerated.
   sources. Fintraffic Finland road weather cameras (2026-09-13; cap 300, `CCTV_FINTRAFFIC_MAX_SOURCES`,
   kill switch `CCTV_FINTRAFFIC_ENABLED=0`) are the fourth pack: one keyless GeoJSON station list
   covering the whole country, where one _preset_ (a station's fixed view) is one camera — 806
